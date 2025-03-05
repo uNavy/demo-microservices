@@ -1,16 +1,22 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 
-export default () => {
+export default ({ fetchPosts }) => {
   const [title, setTitle] = useState('');
 
   const onSubmit = async (event) => {
     event.preventDefault();
-    await axios.post('http://localhost:4000/posts', {
-      title,
-    });
+    
+    try {
+      const response = await axios.post('http://localhost:4000/posts', { title }); // Wait for the response
 
-    setTitle('');
+      if (response.status === 201) { // Only fetch posts if the request was successful
+        setTitle(''); // Clear input field
+        await fetchPosts(); // Fetch latest posts
+      }
+    } catch (error) {
+      console.error('Error creating post:', error);
+    }
   };
 
   return (

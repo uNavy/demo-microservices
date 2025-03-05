@@ -1,67 +1,125 @@
-const express = require('express');
-const bodyParser = require('body-parser');
-const { randomBytes } = require('crypto');
-const cors = require('cors');
-const axios = require('axios');
+const express = require("express");
+const bodyParser = require("body-parser");
+const cors = require("cors");
+const axios = require("axios");
+const pool = require("./db_connection"); // Import database connection
 
 const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 
-const posts = {};
+const serviceName = "Posts Service";
+const eventBusEndPoint = "http://localhost:4005";
 
-// Handler untuk memproses event yang masuk
-const handleEvent = (event) => {
-  const { type, data } = event;
+const handleEvent = async (event) => {
+  const { type, data, from } = event;
 
-  if (type === 'PostCreated') {
-    const { id, title } = data;
-    posts[id] = { id, title };
+  if (type === "PostSavedOnQueryService") {
+    console.log(`🔄 Processing event: ${event.type}, from: ${from}`);
+
+    const { id } = data;
+
+    try {
+      // Check if post exists in the database
+      const checkResult = await pool.query(
+        "SELECT * FROM public.posts WHERE id = $1",
+        [id]
+      );
+
+      if (checkResult.rows.length === 0) {
+        console.warn(`⚠️ Post with ID ${id} not found in database!`);
+      } else {
+        console.log(
+          `✅ Post with ID ${id} verified in database:`,
+          checkResult.rows[0]
+        );
+      }
+    } catch (error) {
+      console.error(
+        `❌ Database query error while verifying post ID ${id}:`,
+        error.message
+      );
+    }
   }
-
-  console.log('Handled event:', type);
+  return;
 };
 
-// Endpoint untuk mendapatkan semua post
-app.get('/posts', (req, res) => {
-  return res.send(posts);
-});
-
-// Endpoint untuk membuat post baru
-app.post('/posts', async (req, res) => {
-  const id = randomBytes(4).toString('hex');
+// Endpoint to create a new post
+app.post("/posts", async (req, res) => {
   const { title } = req.body;
+  let globalId;
+  try {
+    // Insert into Post Service database
+    const result = await pool.query(
+      "INSERT INTO public.posts (title) VALUES ($1) RETURNING id",
+      [title]
+    );
+    const id = result.rows[0].id;
+    globalId = id;
 
-  posts[id] = { id, title };
+    // Send event to event bus
+    const eventResponse = await axios.post(`${eventBusEndPoint}/events`, {
+      type: "PostCreated",
+      data: { id, title },
+      from: serviceName,
+    });
 
-  // Kirim event ke event bus
-  await axios.post('http://localhost:4005/events', {
-    type: 'PostCreated',
-    data: { id, title },
-  });
+    console.log(eventResponse.status)
+    if (eventResponse.status !== 200) {
+      throw new Error("Query Service did not acknowledge PostCreated");
+    }
 
-  return res.status(201).send(posts[id]);
+    console.log(`🚀 New Post Created: ${title} (ID: ${id})`);
+    return res.status(201).send({ id, title });
+  } catch (error) {
+    console.error("❌ Post creation error:", error.message);
+
+    // Rollback in case of failure
+    await pool.query("DELETE FROM public.posts WHERE id = $1", [globalId]);
+
+    return res.status(500).send({ error: "Rollback Posts, can't message is not consumed by Query Service" });
+  }
 });
 
-// Endpoint untuk menerima event dari event service
-app.post('/events', (req, res) => {
-  console.log('Event Received:', req.body.type);
-  handleEvent(req.body);
+// Endpoint to receive events from event service
+app.post("/events", async (req, res) => {
+  await handleEvent(req.body);
   return res.send({});
 });
 
-// Start server dan replay event dari event service saat startup
-app.listen(4000, async () => {
-  console.log('Listening on 4000');
-
+// Function to check database connection
+const checkDatabaseConnection = async () => {
   try {
-    const res = await axios.get('http://localhost:4005/events');
+    const res = await pool.query("SELECT NOW() AS current_time");
+    console.log("🔗 Database connected:", res.rows[0].current_time);
+  } catch (error) {
+    console.error("❌ Database connection error:", error.message);
+    process.exit(1); // Stop the server if DB is not connected
+  }
+};
+
+// Function to fetch events from event bus
+const fetchEvents = async () => {
+  try {
+    // 🔄 Fetch old events from the Event Service
+    const res = await axios.get(`${eventBusEndPoint}/events/${serviceName}`);
+
+    if (res.data.length === 0) {
+      console.log("✅ All previous events were already consumed.");
+      return;
+    }
 
     for (let event of res.data) {
-      console.log('Processing event:', event.type);
-      handleEvent(event);
+      await handleEvent(event.type, event.data);
     }
   } catch (error) {
-    console.error('Error fetching events:', error.message);
+    console.error("❌ Error fetching events:", error.message);
   }
+};
+
+// Start server after checking database connection
+app.listen(4000, async () => {
+  console.log("📡 Server listening on port 4000...");
+  await checkDatabaseConnection();
+  await fetchEvents();
 });
