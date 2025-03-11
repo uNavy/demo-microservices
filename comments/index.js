@@ -70,13 +70,13 @@ const handleEvent = async (event) => {
           }`
         );
 
+        console.log(`✉️ Sending CommentUpdated event to Event Bus`);
         // Notify event bus
         await axios.post("http://localhost:4005/events", {
           type: "CommentUpdated",
           data: { id, postId, status, content },
+          from: "Comments Service",
         });
-
-        console.log(`📢 Event sent: CommentUpdated`);
       }
     } catch (err) {
       console.error(`❌ Error updating comment status:`, err.message);

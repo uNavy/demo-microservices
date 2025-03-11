@@ -12,9 +12,11 @@ const fetchPosts = async () => {
 const PostList = () => {
   const queryClient = useQueryClient(); // Get React Query instance
 
-  const { data: posts = {}, error, isLoading, isFetching } = useQuery({
+  const { data: posts, error, isLoading, isFetching } = useQuery({
     queryKey: ["posts"],
     queryFn: fetchPosts,
+    refetchInterval: 4000, // Refetch every 10 seconds
+
   });
 
   const addCommentToCache = (postId, newComment) => {
@@ -36,7 +38,7 @@ const PostList = () => {
 
   return (
     <div>
-      {isFetching && <p className="text-center text-gray-400">Updating posts...</p>}
+      {isFetching && posts?.length == 0 && <p className="text-center text-gray-400">Updating posts...</p>}
       <div className="flex flex-wrap gap-4 justify-between">
         {Object.values(posts).map((post) => (
           <div

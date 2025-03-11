@@ -14,6 +14,7 @@ const handleEvent = async (type, data) => {
     // 🛑 Moderasi komentar
     const status = data.content.includes("orange") ? "rejected" : "approved";
 
+    console.log("✉️ Sending CommentModerated event to Event Bus");
     await axios.post("http://localhost:4005/events", {
       type: "CommentModerated",
       data: {

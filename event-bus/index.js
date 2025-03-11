@@ -17,9 +17,9 @@ connectDB();
 const eventRoutes = {
   PostCreated: ["Query Service"],
   PostSavedOnQueryService: ["Posts Service"],
-  CommentCreated: ["Comments Service", "Moderation Service", "Query Service"],
+  CommentCreated: ["Query Service", "Moderation Service", , "Comments Service"],
   CommentModerated: ["Comments Service"],
-  CommentUpdated: ["Comments Service", "Query Service"],
+  CommentUpdated: ["Query Service"],
 };
 
 // Service URLs

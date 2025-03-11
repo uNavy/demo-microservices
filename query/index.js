@@ -76,6 +76,8 @@ const handleEvent = async (type, data) => {
   if (type === "CommentUpdated") {
     const { id, status } = data;
 
+    console.log(`🔄 Updating comment status: ${id} | New Status: ${status}`);
+
     try {
       // Update comment status in the database
       const updateResult = await pool.query(
